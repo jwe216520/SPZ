@@ -1,0 +1,52 @@
+# 給佩珍的一封信
+
+HTML、CSS、JavaScript 靜態網站，不需要 npm、資料庫或付費服務。
+
+## 在 VS Code 預覽
+
+1. 用 VS Code 開啟 `SPZ` 資料夾。
+2. 安裝 Live Server 擴充套件，在 `index.html` 按右鍵 → Open with Live Server。
+3. 或在此資料夾終端機執行 `python -m http.server 5500 --bind 127.0.0.1`，開啟 http://127.0.0.1:5500 。結束時按 Ctrl+C。
+4. 請使用 HTTP 預覽，不要直接雙擊 HTML；YouTube 播放器需要正確的來源資訊。
+
+## 修改內容
+
+- `content.js`：稱呼、逐幕文字、不同意回應、結尾、照片順序、YouTube 影片 ID 與初始音量。`{name}` 會自動換成 `recipient`，也能把稱呼改成「妳」。
+- `styles.css`：色彩、字體、版面與動畫。
+- `app.js`：翻頁、同意揭曉與音樂控制。
+- `assets/`：已縮圖並移除 EXIF 的照片副本。原始照片沒有修改。
+
+只有按「我同意」會展開照片；不同意三次後固定回應，按鈕縮小到最低仍有 44 × 44 像素點擊範圍。重新整理會回到開場，不記錄或傳送回答。
+
+## GitHub Pages 發布
+
+文字與照片會公開可存取；noindex 只是請搜尋引擎不要索引，不是密碼保護。即使照片到結尾才顯示，檔案仍可直接存取。發布前請確認你們願意公開這些內容。
+
+1. 在 GitHub 建立公開儲存庫，例如 `for-peizhen`（GitHub Free 的 Pages 使用公開儲存庫）。
+2. 上傳 `index.html`、`styles.css`、`content.js`、`app.js`、`.nojekyll` 及整個 `assets` 資料夾。使用 GitHub 上傳時若忽略隱藏檔，純靜態檔案也可發布；用 Git 推送會保留 `.nojekyll`。
+3. 若使用 VS Code 的 Git：初始化儲存庫、提交檔案、把分支改為 `main`，再 Publish to GitHub 選擇公開儲存庫。
+4. 儲存庫 Settings → Pages → Source 選 Deploy from a branch → `main` → `/ (root)` → Save。
+5. 等 GitHub 的部署完成，從 Pages 頁面開啟實際網址，通常為 `https://你的帳號.github.io/儲存庫名稱/`。
+6. 在她會使用的手機瀏覽器，確認影片能嵌入播放、故事能翻頁、三張照片都能顯示；之後修改並提交到 `main` 即會重新部署。
+
+官方說明：https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages
+
+## 現場使用與音樂限制
+
+- 到車站途中，找一個可以停下來慢慢看的地方，預留閱讀時間。
+- 先用實際手機和行動網路打開已部署網站，測試音樂。回到首頁即可重新開始。
+- 頁面會嘗試播放這首歌；瀏覽器可能阻擋有聲自動播放。點「打開這封信」會重試，仍沒聲音可按音樂播放鍵或 YouTube 播放器。
+- YouTube 播放器保持可見，可能有廣告、地區或影片擁有者的嵌入限制；網站沒有下載歌曲或移除 YouTube 的介面。歌曲結束不自動換歌，但 YouTube 自身仍可能顯示推薦內容。
+- 手機音量控制可能受裝置限制，請使用實體音量鍵；音樂失敗不會阻止閱讀。
+- 本機預覽可驗證操作，但部署後的 YouTube 播放仍須在實際網址測試。
+
+## 驗收清單
+
+`scripts/verify.cjs` 是可重複執行的瀏覽器驗收腳本，需要 Playwright 與 Chrome。啟動 HTTP 預覽後可執行 `node scripts/verify.cjs`；若 Playwright 不在專案的套件搜尋路徑，設定 `PLAYWRIGHT_MODULE_PATH` 為已安裝的套件路徑即可。截圖存於被 Git 忽略的 `.preview/`。音樂互動使用模擬 API，最後另外觀察真實 YouTube 連線；兩者不能混為實際播放驗證。限制網路的環境可設定 `OFFLINE_PREVIEW=1`，用本地檔案回應瀏覽器 HTTP 請求，此模式不驗證真實伺服器或 YouTube 連線。
+
+- 320px 手機與桌面寬度沒有水平溢出；上一頁與下一頁順序正確。
+- 最後一幕沒有下一頁；不同意四次以上仍停留第三句，照片不出現。
+- 我同意後只顯示一次結尾，照片依海邊 → 夜晚 → 走路排列且不裁切。
+- Tab、Enter 可操作，翻頁後焦點在新標題；減少動態效果設定會關閉動畫。
+- 斷網、播放器失敗仍能翻頁；音樂重試、播放、暫停與靜音可操作。
+- 重新整理回到開場；專案子路徑下樣式、程式與照片可載入。

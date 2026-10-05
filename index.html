@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f1e8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>給佩珍的一封信</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./content.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <header class="masthead"><a href="./" aria-label="重新打開這封信">一封寫給妳的信 <span class="tiny-heart">♡</span></a><span>OUR LITTLE STORY</span></header>
+  <main class="layout">
+    <section class="letter" aria-label="我們的故事">
+      <div class="paper-edge" aria-hidden="true"></div>
+      <div class="letter-inner">
+        <div class="chapter-top"><span id="eyebrow">FOR YOU, WITH LOVE</span><span id="page-number">序</span></div>
+        <div id="scene"></div>
+        <nav id="navigation" class="navigation" aria-label="閱讀控制" hidden>
+          <button id="previous" class="text-button" type="button">← 上一頁</button>
+          <span id="progress" aria-label="閱讀進度"></span>
+          <button id="next" class="primary" type="button">下一頁 →</button>
+        </nav>
+      </div>
+    </section>
+    <aside class="music-card" aria-label="陪伴這封信的音樂">
+      <div class="music-heading"><span class="music-icon" aria-hidden="true">♫</span><div><p class="label">A SONG FOR THIS MOMENT</p><h2>讓音樂，陪我們慢慢看</h2></div></div>
+      <p class="music-note">有些心意，想配著這首歌說給妳聽。</p>
+      <div class="player-frame"><div id="youtube-player"></div></div>
+      <p id="music-status" class="music-status" role="status">正在準備音樂，妳也可以先讀這封信。</p>
+      <div class="music-controls"><button id="play" class="secondary" type="button">播放音樂</button><button id="mute" class="text-button" type="button" aria-pressed="false">靜音</button></div>
+      <label class="volume-label" for="volume">音量 <output id="volume-value" for="volume">30%</output></label>
+      <input id="volume" type="range" min="0" max="100" value="30">
+      <p class="device-note">手機若無法調整音量，請使用手機音量鍵。</p>
+      <div class="music-links"><button id="retry" class="text-button" type="button">重新載入</button><a id="youtube-link" target="_blank" rel="noopener noreferrer">在 YouTube 開啟 ↗</a></div>
+    </aside>
+  </main>
+  <footer class="footer">從那次相遇開始，故事慢慢有了我們。 <span aria-hidden="true">♡</span></footer>
+  <noscript><p class="noscript">這封信需要 JavaScript 才能翻頁，請在瀏覽器中開啟 JavaScript。</p></noscript>
+</body>
+</html>
