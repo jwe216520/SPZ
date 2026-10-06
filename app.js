@@ -70,19 +70,21 @@
       no.dataset.step = String(noCount);
       const response = element('p', 'response', noCount ? content.noResponses[noCount - 1] : '');
       response.setAttribute('role', 'status');
+      response.hidden = noCount === 0;
       no.addEventListener('click', () => {
         noCount = Math.min(noCount + 1, content.noResponses.length);
         no.dataset.step = String(noCount);
         response.textContent = content.noResponses[noCount - 1];
+        response.hidden = false;
       });
       buttons.append(yes, no);
-      wrap.append(buttons, response, element('p', 'invitation-note', content.invitationNote));
+      wrap.append(buttons, element('p', 'invitation-note', content.invitationNote), response);
     }
     scene.replaceChildren(wrap);
     $('eyebrow').textContent = 'A LITTLE CLOSER, PAGE BY PAGE';
     $('page-number').textContent = `${String(index + 1).padStart(2, '0')} / ${String(content.chapters.length).padStart(2, '0')}`;
     $('navigation').hidden = false;
-    $('swipe-hint').textContent = chapter.question ? '右滑回顧上一頁 · 把答案留給妳' : '左滑下一頁 · 右滑上一頁';
+    $('swipe-hint').textContent = chapter.question ? '點左側或右滑回顧 · 把答案留給妳' : '點右側／左滑下一頁 · 點左側／右滑上一頁';
     $('progress').hidden = false;
     updateProgress();
     focusScene(title);
@@ -90,7 +92,7 @@
   function showEnding() {
     showingEnding = true;
     $('navigation').hidden = false;
-    $('swipe-hint').textContent = '右滑回到上一頁 · 上下滑動看照片';
+    $('swipe-hint').textContent = '點左側或右滑回上一頁 · 點字卡看照片';
     $('progress').hidden = true;
     $('eyebrow').textContent = 'TO BE CONTINUED, TOGETHER';
     $('page-number').textContent = '♡';
@@ -102,8 +104,16 @@
     const memories = element('div', 'memories');
     memories.append(element('p', 'memories-label', 'LITTLE MOMENTS, OUR MEMORIES'));
     content.photos.forEach((photo, index) => {
-      const card = element('figure', 'photo-card');
+      const card = element('button', 'photo-card');
+      card.type = 'button';
+      card.setAttribute('aria-pressed', 'false');
+      card.setAttribute('aria-label', `${photo.caption} 點一下看照片`);
       card.style.animationDelay = `${0.35 + index * 0.15}s`;
+      const inner = element('span', 'photo-card-inner');
+      const front = element('span', 'photo-face photo-front');
+      front.append(element('span', 'photo-caption', photo.caption), element('span', 'photo-hint', '點一下，看這張回憶 ♡'));
+      const back = element('span', 'photo-face photo-back');
+      back.setAttribute('aria-hidden', 'true');
       const img = document.createElement('img');
       img.src = photo.src;
       img.alt = photo.alt;
@@ -111,9 +121,18 @@
       img.loading = index === 0 ? 'eager' : 'lazy';
       img.addEventListener('error', () => {
         img.hidden = true;
-        card.prepend(element('p', 'photo-error', '這張回憶暫時沒有載入，請重新整理後再看看。'));
+        back.prepend(element('span', 'photo-error', '這張回憶暫時沒有載入，請重新整理後再看看。'));
       }, { once: true });
-      card.append(img, element('figcaption', '', photo.caption));
+      back.append(img, element('span', 'photo-hint', '點一下，翻回文字'));
+      inner.append(front, back);
+      card.append(inner);
+      card.addEventListener('click', () => {
+        const flipped = card.classList.toggle('is-flipped');
+        card.setAttribute('aria-pressed', String(flipped));
+        card.setAttribute('aria-label', `${photo.caption} ${flipped ? '點一下翻回文字' : '點一下看照片'}`);
+        front.setAttribute('aria-hidden', String(flipped));
+        back.setAttribute('aria-hidden', String(!flipped));
+      });
       memories.append(card);
     });
     wrap.append(memories, element('p', 'ending-sign', '慢慢來，未來還有好多回憶。 ♡'));
@@ -136,12 +155,13 @@
   letter.addEventListener('pointerdown', event => {
     if (!event.isPrimary) { gesture = null; return; }
     if (event.button !== 0 || interactive(event.target)) return;
-    gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, horizontal: false };
+    gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, horizontal: false, moved: false, started: performance.now(), selecting: Boolean(window.getSelection()?.toString()) };
   });
   letter.addEventListener('pointermove', event => {
     if (!gesture || event.pointerId !== gesture.id) return;
     const dx = event.clientX - gesture.x;
     const dy = event.clientY - gesture.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) >= 8) gesture.moved = true;
     if (!gesture.horizontal && Math.max(Math.abs(dx), Math.abs(dy)) >= 12) {
       if (Math.abs(dx) <= Math.abs(dy) * 1.5) { gesture = null; return; }
       gesture.horizontal = true;
@@ -156,7 +176,13 @@
     if (letter.hasPointerCapture(event.pointerId)) letter.releasePointerCapture(event.pointerId);
     const dx = event.clientX - swipe.x;
     const dy = event.clientY - swipe.y;
-    if (swipe.horizontal && Math.abs(dx) >= 55 && Math.abs(dx) > Math.abs(dy) * 1.5) turnPage(dx < 0 ? 1 : -1);
+    if (swipe.selecting || window.getSelection()?.toString()) return;
+    if (swipe.horizontal && Math.abs(dx) >= 55 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      turnPage(dx < 0 ? 1 : -1);
+    } else if (!swipe.moved && Math.max(Math.abs(dx), Math.abs(dy)) < 8 && performance.now() - swipe.started < 600 && !interactive(event.target)) {
+      const bounds = letter.getBoundingClientRect();
+      turnPage(event.clientX >= bounds.left + bounds.width / 2 ? 1 : -1);
+    }
   });
   letter.addEventListener('pointercancel', () => { gesture = null; });
   letter.addEventListener('lostpointercapture', event => {

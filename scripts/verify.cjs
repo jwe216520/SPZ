@@ -26,6 +26,10 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
       await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
       await page.waitForTimeout(100);
     }
+    async function tapSide(direction) {
+      const rect=await page.locator('.letter').boundingBox();
+      await page.mouse.click(rect.x+rect.width*(direction>0?.8:.2),Math.max(100,rect.y+110));
+    }
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
     if(process.env.OFFLINE_PREVIEW==='1'){
       // 在限制網路的環境中，以本地檔案回應 HTTP 請求；仍驗證瀏覽器資源解析與相對路徑。
@@ -52,6 +56,10 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
       await page.getByRole('button',{name:'打開這封信'}).click();
       assert.match(await page.locator('.scene-date').textContent(),/2025/);
       console.log('PASS: desktop mouse click opens letter.');
+      await tapSide(1);
+      assert.match(await page.locator('.scene-date').textContent(),/2026/);
+      await tapSide(-1);
+      assert.match(await page.locator('.scene-date').textContent(),/2025/);
       await page.keyboard.press('ArrowRight');
       assert.match(await page.locator('.scene-date').textContent(),/2026/);
       await page.keyboard.press('ArrowLeft');
@@ -100,6 +108,17 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
     await page.waitForTimeout(300);
     assert(await page.locator('audio').evaluate((a,t)=>a.muted&&!a.paused&&a.currentTime>t,mutedTime));
     assert.equal(await page.getByRole('button',{name:/上一頁|下一頁/}).count(),0);
+    await tapSide(1);
+    assert.equal(await page.locator('#page-number').textContent(),'02 / 06');
+    await tapSide(-1);
+    assert.equal(await page.locator('#page-number').textContent(),'01 / 06');
+    await page.locator('.prose p').first().evaluate(node=>{
+      const range=document.createRange();range.selectNodeContents(node);
+      const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);
+    });
+    await tapSide(1);
+    assert.equal(await page.locator('#page-number').textContent(),'01 / 06');
+    await page.evaluate(()=>window.getSelection().removeAllRanges());
     await swipe(-1,25);
     assert.match(await page.locator('.scene-date').textContent(),/2025/);
     await swipe(-1,80,true);
@@ -122,6 +141,12 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
     assert.equal(await page.getByRole('button',{name:'下一頁'}).count(),0);
     await swipe(-1);
     assert.equal(await page.locator('#scene img').count(),0);
+    assert.equal(await page.getByRole('button',{name:'我同意'}).count(),1);
+    assert.equal(await page.locator('.response').isVisible(),false);
+    const buttonsBox=await page.locator('.answer-buttons').boundingBox();
+    const noteBox=await page.locator('.invitation-note').boundingBox();
+    assert(noteBox.y-buttonsBox.y-buttonsBox.height<=12);
+    await tapSide(1);
     assert.equal(await page.getByRole('button',{name:'我同意'}).count(),1);
     const responses=await page.evaluate(()=>window.LETTER_CONTENT.noResponses);
     const expected=[...responses,responses.at(-1)];
@@ -147,12 +172,40 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
     assert.equal(await page.locator('#scene img').count(),3);
     const sources=await page.locator('#scene img').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('src')));
     assert.deepEqual(sources,await page.evaluate(()=>window.LETTER_CONTENT.photos.map(photo=>photo.src)));
+    assert.equal(await page.locator('.photo-card[aria-pressed="false"]').count(),3);
+    const cards=page.locator('.photo-card');
+    for(let i=0;i<3;i++){
+      const card=cards.nth(i);
+      await card.scrollIntoViewIfNeeded();
+      const before=await card.boundingBox();
+      await card.click();
+      assert.equal(await card.getAttribute('aria-pressed'),'true');
+      assert.equal(await page.locator('.ending').count(),1);
+      const after=await card.boundingBox();
+      assert(Math.abs(before.height-after.height)<1);
+      assert.equal(await cards.filter({has:page.locator('.photo-front[aria-hidden="true"]')}).count(),1);
+      await card.click();
+      assert.equal(await card.getAttribute('aria-pressed'),'false');
+    }
+    await cards.first().focus();await page.keyboard.press('Enter');
+    assert.equal(await cards.first().getAttribute('aria-pressed'),'true');
+    await page.keyboard.press('Space');
+    assert.equal(await cards.first().getAttribute('aria-pressed'),'false');
+    for(const width of [320,390,768,1280]){
+      await page.setViewportSize({width,height:900});
+      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`card overflow at ${width}`);
+    }
+    await page.setViewportSize({width:390,height:844});
     for(const img of await page.locator('#scene img').all()){
       await img.scrollIntoViewIfNeeded();
       await img.evaluate(node=>node.decode());
       assert(await img.evaluate(node=>node.naturalWidth>0&&getComputedStyle(node).height!=='0px'));
     }
     await page.screenshot({path:path.join(output,'mobile-ending.png'),fullPage:true});
+    for(const card of await cards.all())await card.click();
+    assert.equal(await page.locator('.photo-card[aria-pressed="true"]').count(),3);
+    await page.waitForTimeout(800);
+    await page.screenshot({path:path.join(output,'mobile-ending-photos.png'),fullPage:true});
     await page.locator('h1').scrollIntoViewIfNeeded();
     await swipe(1);
     assert.equal(await page.getByRole('button',{name:'我同意'}).count(),1);
@@ -160,6 +213,7 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
     assert.equal(await page.locator('.response').textContent(),responses.at(-1));
     await page.getByRole('button',{name:'我同意'}).click();
     assert.equal(await page.locator('#scene img').count(),3);
+    assert.equal(await page.locator('.photo-card[aria-pressed="false"]').count(),3);
     const toggle=page.locator('#sound-toggle');
     const bounds=await toggle.boundingBox();assert(bounds.width>=44&&bounds.height>=44);
     await toggle.focus();await page.keyboard.press('Enter');
@@ -174,6 +228,20 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
     await page.waitForFunction(()=>{const a=document.querySelector('audio');return !a.paused&&!a.ended&&a.currentTime<3;});
     await page.emulateMedia({reducedMotion:'reduce'});
     assert.equal(await page.locator('.ending').evaluate(node=>getComputedStyle(node).animationName),'none');
+    await cards.first().click();
+    assert.equal(await cards.first().locator('.photo-front').evaluate(node=>getComputedStyle(node).visibility),'hidden');
+    assert.equal(await cards.first().locator('.photo-back').evaluate(node=>getComputedStyle(node).visibility),'visible');
+    await cards.first().click();
+    await page.route('**/assets/seaside.jpg',route=>route.fulfill({status:404,body:'Not found'}));
+    await page.reload();
+    await page.getByRole('button',{name:'打開這封信'}).click();
+    for(let i=0;i<5;i++)await swipe(-1);
+    await page.getByRole('button',{name:'我同意'}).click();
+    await cards.first().click();
+    await page.locator('.photo-error').waitFor({state:'visible'});
+    await cards.first().click();
+    assert.equal(await cards.first().getAttribute('aria-pressed'),'false');
+    await page.unroute('**/assets/seaside.jpg');
     await page.reload();assert.equal(await page.locator('#scene img').count(),0);
     // 真實 MP3 載入失敗及恢復，閱讀仍可完成。
     await page.route('**/assets/music.mp3',route=>route.fulfill({status:404,body:'Not found'}));
