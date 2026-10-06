@@ -137,7 +137,14 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
     await page.keyboard.press('ArrowRight');
     assert.match(await page.locator('.scene-date').textContent(),/2026/);
     await page.keyboard.press('ArrowLeft');
-    for(let i=0;i<5;i++)await swipe(-1);
+    for(let i=0;i<5;i++){
+      assert.equal(await page.locator('#swipe-hint').isVisible(),false);
+      assert.equal(await page.locator('#progress').isVisible(),true);
+      assert.equal(await page.locator('#page-number').textContent(),`${String(i+1).padStart(2,'0')} / 06`);
+      await swipe(-1);
+    }
+    assert.equal(await page.locator('#swipe-hint').textContent(),'把答案留給妳');
+    assert.equal(await page.locator('#swipe-hint').isVisible(),true);
     assert.equal(await page.getByRole('button',{name:'下一頁'}).count(),0);
     await swipe(-1);
     assert.equal(await page.locator('#scene img').count(),0);
@@ -149,17 +156,31 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
     await tapSide(1);
     assert.equal(await page.getByRole('button',{name:'我同意'}).count(),1);
     const responses=await page.evaluate(()=>window.LETTER_CONTENT.noResponses);
+    assert.equal(responses.length,6);
     const expected=[...responses,responses.at(-1)];
-    let priorWidth=Infinity;
-    for(const response of expected){
+    let priorWidth=(await page.locator('.no-button').boundingBox()).width;
+    let priorHeight=(await page.locator('.no-button').boundingBox()).height;
+    for(const [index,response] of expected.entries()){
       await page.getByRole('button',{name:'不同意',exact:true}).click();
       assert.equal(await page.locator('.response').textContent(),response);
       await page.waitForTimeout(230);
       const bounds=await page.locator('.no-button').boundingBox();
       assert(bounds.width>=44&&bounds.height>=44);
-      assert(bounds.width<=priorWidth);priorWidth=bounds.width;
+      if(index<6)assert(bounds.width<priorWidth,`no button must shrink at step ${index+1}`);
+      else {
+        assert.equal(bounds.width,priorWidth);
+        assert.equal(bounds.height,priorHeight);
+      }
+      assert.equal(await page.locator('.no-button').getAttribute('data-step'),String(Math.min(index+1,6)));
+      priorWidth=bounds.width;priorHeight=bounds.height;
       assert.equal(await page.locator('#scene img').count(),0);
     }
+    await page.locator('h1').focus();await page.keyboard.press('ArrowLeft');
+    assert.equal(await page.locator('#swipe-hint').isVisible(),false);
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await page.locator('.no-button').getAttribute('data-step'),'6');
+    assert.equal(await page.locator('.response').textContent(),responses.at(-1));
+    await page.waitForTimeout(650);
     await page.screenshot({path:path.join(output,'mobile-question.png'),fullPage:true});
     for(const width of [320,390,768,1280]){
       await page.setViewportSize({width,height:900});
@@ -170,10 +191,64 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
     await page.getByRole('button',{name:'我同意'}).focus();
     await page.keyboard.press('Enter');
     assert.equal(await page.locator('#scene img').count(),3);
+    assert.equal(await page.locator('#swipe-hint').isVisible(),true);
+    assert.equal(await page.locator('#swipe-hint').textContent(),'點左側或右滑回上一頁 · 點字卡看照片');
     const sources=await page.locator('#scene img').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('src')));
     assert.deepEqual(sources,await page.evaluate(()=>window.LETTER_CONTENT.photos.map(photo=>photo.src)));
     assert.equal(await page.locator('.photo-card[aria-pressed="false"]').count(),3);
     const cards=page.locator('.photo-card');
+    async function restartEnding() {
+      await page.locator('h1').focus();
+      await page.keyboard.press('ArrowLeft');
+      assert.equal(await page.locator('.photo-card').count(),0);
+      await page.getByRole('button',{name:'我同意'}).click();
+      await page.waitForTimeout(800);
+      assert.equal(await page.locator('.photo-card[aria-pressed="false"]').count(),3);
+    }
+    // 程式捲動不啟用；使用者往下捲動後各卡片才在半張可見時翻面。
+    await cards.first().scrollIntoViewIfNeeded();
+    await page.waitForTimeout(800);
+    assert.equal(await cards.first().getAttribute('aria-pressed'),'false');
+    await page.locator('h1').scrollIntoViewIfNeeded();
+    await page.mouse.move(350,450);
+    await page.mouse.wheel(0,300);
+    await page.waitForTimeout(400);
+    assert.equal(await cards.nth(2).getAttribute('aria-pressed'),'false');
+    await cards.first().scrollIntoViewIfNeeded();
+    await page.waitForFunction(()=>document.querySelector('.photo-card').getAttribute('aria-pressed')==='true');
+    const originalHeight=(await cards.first().boundingBox()).height;
+    await cards.first().click();
+    assert.equal(await cards.first().getAttribute('aria-pressed'),'false');
+    await cards.nth(1).scrollIntoViewIfNeeded();
+    await page.waitForFunction(()=>document.querySelectorAll('.photo-card')[1].getAttribute('aria-pressed')==='true');
+    await cards.nth(2).scrollIntoViewIfNeeded();
+    await page.waitForFunction(()=>document.querySelectorAll('.photo-card')[2].getAttribute('aria-pressed')==='true');
+    await cards.first().scrollIntoViewIfNeeded();
+    await page.waitForTimeout(150);
+    assert.equal(await cards.first().getAttribute('aria-pressed'),'false');
+    assert(Math.abs((await cards.first().boundingBox()).height-originalHeight)<1);
+    await restartEnding();
+    // 手動操作過的卡片即使翻回文字也不會被首次自動翻面覆蓋。
+    await cards.first().click();await cards.first().click();
+    await page.locator('h1').scrollIntoViewIfNeeded();
+    await page.locator('h1').focus();
+    await page.keyboard.press('PageDown');
+    await cards.nth(1).scrollIntoViewIfNeeded();
+    await page.waitForFunction(()=>document.querySelectorAll('.photo-card')[1].getAttribute('aria-pressed')==='true');
+    await cards.first().scrollIntoViewIfNeeded();
+    assert.equal(await cards.first().getAttribute('aria-pressed'),'false');
+    await restartEnding();
+    // 原生觸控向上拖曳，讓頁面向下捲動。
+    await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:350,y:600}]});
+    for(let step=1;step<=8;step++){
+      await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:350,y:600-step*40}]});
+      await page.waitForTimeout(30);
+    }
+    await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    await cards.first().scrollIntoViewIfNeeded();
+    await page.waitForFunction(()=>document.querySelector('.photo-card').getAttribute('aria-pressed')==='true');
+    await restartEnding();
+    console.log('PASS: wheel, keyboard and touch arm one-time photo reveal; programmatic scroll stays on text; manual choices survive scrolling; ending reentry resets cards.');
     for(let i=0;i<3;i++){
       const card=cards.nth(i);
       await card.scrollIntoViewIfNeeded();

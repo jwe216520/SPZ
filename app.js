@@ -6,6 +6,7 @@
   let chapterIndex = -1;
   let noCount = 0;
   let showingEnding = false;
+  let stopPhotoReveal = () => {};
   const personalise = text => text.replaceAll('{name}', content.recipient);
   document.title = `給${content.recipient}的一封信`;
 
@@ -35,6 +36,7 @@
     $('progress').setAttribute('aria-label', `第 ${chapterIndex + 1} 頁，共 ${content.chapters.length} 頁`);
   }
   function showOpening(restoreFocus = false) {
+    stopPhotoReveal();
     chapterIndex = -1;
     showingEnding = false;
     $('navigation').hidden = true;
@@ -53,6 +55,7 @@
   }
   function showChapter(index) {
     if (index < 0 || index >= content.chapters.length) return;
+    stopPhotoReveal();
     showingEnding = false;
     chapterIndex = index;
     const chapter = content.chapters[index];
@@ -84,15 +87,18 @@
     $('eyebrow').textContent = 'A LITTLE CLOSER, PAGE BY PAGE';
     $('page-number').textContent = `${String(index + 1).padStart(2, '0')} / ${String(content.chapters.length).padStart(2, '0')}`;
     $('navigation').hidden = false;
-    $('swipe-hint').textContent = chapter.question ? '點左側或右滑回顧 · 把答案留給妳' : '點右側／左滑下一頁 · 點左側／右滑上一頁';
+    $('swipe-hint').hidden = !chapter.question;
+    $('swipe-hint').textContent = chapter.question ? '把答案留給妳' : '';
     $('progress').hidden = false;
     updateProgress();
     focusScene(title);
   }
   function showEnding() {
+    stopPhotoReveal();
     showingEnding = true;
     $('navigation').hidden = false;
     $('swipe-hint').textContent = '點左側或右滑回上一頁 · 點字卡看照片';
+    $('swipe-hint').hidden = false;
     $('progress').hidden = true;
     $('eyebrow').textContent = 'TO BE CONTINUED, TOGETHER';
     $('page-number').textContent = '♡';
@@ -103,6 +109,7 @@
     wrap.append(heart, title, prose(content.ending.lines));
     const memories = element('div', 'memories');
     memories.append(element('p', 'memories-label', 'LITTLE MOMENTS, OUR MEMORIES'));
+    const pendingCards = new Map();
     content.photos.forEach((photo, index) => {
       const card = element('button', 'photo-card');
       card.type = 'button';
@@ -126,18 +133,78 @@
       back.append(img, element('span', 'photo-hint', '點一下，翻回文字'));
       inner.append(front, back);
       card.append(inner);
-      card.addEventListener('click', () => {
-        const flipped = card.classList.toggle('is-flipped');
+      const setFlipped = flipped => {
+        card.classList.toggle('is-flipped', flipped);
         card.setAttribute('aria-pressed', String(flipped));
         card.setAttribute('aria-label', `${photo.caption} ${flipped ? '點一下翻回文字' : '點一下看照片'}`);
         front.setAttribute('aria-hidden', String(flipped));
         back.setAttribute('aria-hidden', String(!flipped));
+      };
+      pendingCards.set(card, () => setFlipped(true));
+      card.addEventListener('click', () => {
+        // 手動操作優先；這張卡片之後不再受自動翻面影響。
+        pendingCards.delete(card);
+        setFlipped(!card.classList.contains('is-flipped'));
       });
       memories.append(card);
     });
     wrap.append(memories, element('p', 'ending-sign', '慢慢來，未來還有好多回憶。 ♡'));
     scene.replaceChildren(wrap);
     focusScene(title);
+    watchPhotoReveal(pendingCards);
+  }
+  function watchPhotoReveal(pendingCards) {
+    if (!('IntersectionObserver' in window)) return;
+    const events = new AbortController();
+    let stopped = false;
+    let started = false;
+    let downwardIntent = false;
+    let previousY = window.scrollY;
+    let touchY = null;
+    const observer = new IntersectionObserver(entries => {
+      if (stopped) return;
+      entries.forEach(entry => {
+        if (!entry.isIntersecting || entry.intersectionRatio < 0.5) return;
+        const reveal = pendingCards.get(entry.target);
+        if (reveal) {
+          pendingCards.delete(entry.target);
+          reveal();
+        }
+        observer.unobserve(entry.target);
+      });
+      if (!pendingCards.size) stopPhotoReveal();
+    }, { threshold: 0.5 });
+    stopPhotoReveal = () => {
+      stopped = true;
+      observer.disconnect();
+      events.abort();
+      pendingCards.clear();
+    };
+    const listen = (type, handler) => window.addEventListener(type, handler, { passive: true, signal: events.signal });
+    // 只有使用者的向下捲動才啟用；開場定位、Tab 聚焦和程式捲動不啟用。
+    listen('wheel', event => { downwardIntent = event.deltaY > 0; });
+    listen('touchstart', event => { touchY = event.touches[0]?.clientY ?? null; });
+    listen('touchmove', event => {
+      const nextY = event.touches[0]?.clientY;
+      if (touchY !== null && nextY !== undefined) downwardIntent = nextY < touchY;
+      touchY = nextY ?? null;
+    });
+    listen('keydown', event => {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (event.target.closest('button, a, input, select, textarea, [contenteditable]')) return;
+      downwardIntent = ['ArrowDown', 'PageDown', 'End', ' '].includes(event.key);
+    });
+    listen('pointerdown', event => {
+      downwardIntent = event.clientX >= document.documentElement.clientWidth;
+    });
+    listen('scroll', () => {
+      const currentY = window.scrollY;
+      if (!started && downwardIntent && currentY > previousY) {
+        started = true;
+        pendingCards.forEach((_, card) => observer.observe(card));
+      }
+      previousY = currentY;
+    });
   }
   function turnPage(direction) {
     if (showingEnding) {
