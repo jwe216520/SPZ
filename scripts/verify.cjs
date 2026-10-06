@@ -8,9 +8,10 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
 (async () => {
   fs.mkdirSync(output,{recursive:true});
   const autoplayOnly=process.env.AUTOPLAY_ONLY==='1';
-  const browser = await chromium.launch({channel:'chrome',headless:true,args:autoplayOnly?['--autoplay-policy=no-user-gesture-required']:[]});
+  const desktopOnly=process.env.DESKTOP_ONLY==='1';
+  const browser = await chromium.launch({channel:process.env.BROWSER_CHANNEL||'chrome',headless:true,args:autoplayOnly?['--autoplay-policy=no-user-gesture-required']:[]});
   try {
-    const page=await browser.newPage({viewport:{width:390,height:844},hasTouch:true});
+    const page=await browser.newPage({viewport:{width:desktopOnly?1280:390,height:844},hasTouch:!desktopOnly});
     const touch=await page.context().newCDPSession(page);
     async function swipe(direction, distance=110, vertical=false) {
       await page.waitForTimeout(160);
@@ -44,7 +45,35 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
       });
     }
     
-    await page.goto(base);
+    await page.goto(process.env.DIRECT_FILE==='1'?require('node:url').pathToFileURL(path.join(process.cwd(),'index.html')).href:base);
+    if(desktopOnly){
+      await page.waitForTimeout(700);
+      await page.screenshot({path:path.join(output,`${process.env.BROWSER_CHANNEL||'chrome'}-desktop-opening.png`),fullPage:true});
+      await page.getByRole('button',{name:'打開這封信'}).click();
+      assert.match(await page.locator('.scene-date').textContent(),/2025/);
+      console.log('PASS: desktop mouse click opens letter.');
+      await page.keyboard.press('ArrowRight');
+      assert.match(await page.locator('.scene-date').textContent(),/2026/);
+      await page.keyboard.press('ArrowLeft');
+      assert.match(await page.locator('.scene-date').textContent(),/2025/);
+      const rect=await page.locator('#scene').boundingBox();
+      await page.mouse.move(rect.x+300,rect.y+170);
+      await page.mouse.down();
+      await page.mouse.move(rect.x+150,rect.y+170,{steps:8});
+      await page.mouse.up();
+      assert.match(await page.locator('.scene-date').textContent(),/2026/);
+      console.log('PASS: desktop arrow keys and mouse drag change pages.');
+      assert.deepEqual(errors,[]);
+      if(process.env.DIRECT_FILE==='1')return;
+      await page.route('**/assets/music.mp3',route=>route.fulfill({status:404,body:'Not found'}));
+      await page.reload();
+      await page.waitForFunction(()=>document.querySelector('audio').error!==null);
+      await page.getByRole('button',{name:'打開這封信'}).click();
+      assert.match(await page.locator('.scene-date').textContent(),/2025/);
+      assert.deepEqual(errors,[]);
+      console.log('PASS: desktop opening works even when MP3 fails.');
+      return;
+    }
     if(autoplayOnly){
       await page.waitForFunction(()=>{const a=document.querySelector('audio');return !a.paused&&!a.muted&&a.currentTime>0;});
       assert(await page.locator('audio').evaluate(a=>a.autoplay&&!a.defaultMuted&&a.volume===1));
