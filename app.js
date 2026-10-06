@@ -5,7 +5,7 @@
   const scene = $('scene');
   let chapterIndex = -1;
   let noCount = 0;
-  let accepted = false;
+  let showingEnding = false;
   const personalise = text => text.replaceAll('{name}', content.recipient);
   document.title = `給${content.recipient}的一封信`;
 
@@ -34,7 +34,12 @@
     content.chapters.forEach((_, i) => $('progress').append(element('span', i === chapterIndex ? 'active' : '')));
     $('progress').setAttribute('aria-label', `第 ${chapterIndex + 1} 頁，共 ${content.chapters.length} 頁`);
   }
-  function showOpening() {
+  function showOpening(restoreFocus = false) {
+    chapterIndex = -1;
+    showingEnding = false;
+    $('navigation').hidden = true;
+    $('eyebrow').textContent = 'FOR YOU, WITH LOVE';
+    $('page-number').textContent = '序';
     const wrap = element('div', 'intro scene-enter');
     wrap.append(element('div', 'envelope'));
     wrap.firstChild.setAttribute('aria-hidden', 'true');
@@ -44,9 +49,11 @@
     open.addEventListener('click', () => { requestMusic(); showChapter(0); });
     wrap.append(open);
     scene.replaceChildren(wrap);
+    if (restoreFocus) focusScene(wrap.querySelector('h1'));
   }
   function showChapter(index) {
-    if (accepted || index < 0 || index >= content.chapters.length) return;
+    if (index < 0 || index >= content.chapters.length) return;
+    showingEnding = false;
     chapterIndex = index;
     const chapter = content.chapters[index];
     const wrap = element('div', 'scene-enter');
@@ -75,15 +82,16 @@
     $('eyebrow').textContent = 'A LITTLE CLOSER, PAGE BY PAGE';
     $('page-number').textContent = `${String(index + 1).padStart(2, '0')} / ${String(content.chapters.length).padStart(2, '0')}`;
     $('navigation').hidden = false;
-    $('previous').disabled = index === 0;
-    $('next').hidden = index === content.chapters.length - 1;
+    $('swipe-hint').textContent = chapter.question ? '右滑回顧上一頁 · 把答案留給妳' : '左滑下一頁 · 右滑上一頁';
+    $('progress').hidden = false;
     updateProgress();
     focusScene(title);
   }
   function showEnding() {
-    if (accepted) return;
-    accepted = true;
-    $('navigation').hidden = true;
+    showingEnding = true;
+    $('navigation').hidden = false;
+    $('swipe-hint').textContent = '右滑回到上一頁 · 上下滑動看照片';
+    $('progress').hidden = true;
     $('eyebrow').textContent = 'TO BE CONTINUED, TOGETHER';
     $('page-number').textContent = '♡';
     const wrap = element('div', 'ending scene-enter');
@@ -112,8 +120,58 @@
     scene.replaceChildren(wrap);
     focusScene(title);
   }
-  $('previous').addEventListener('click', () => showChapter(chapterIndex - 1));
-  $('next').addEventListener('click', () => showChapter(chapterIndex + 1));
+  function turnPage(direction) {
+    if (showingEnding) {
+      if (direction < 0) showChapter(content.chapters.length - 1);
+      return;
+    }
+    // 首頁必須點擊開信；告白頁不能用滑動略過「我同意」。
+    if (chapterIndex < 0) return;
+    if (direction < 0 && chapterIndex === 0) showOpening(true);
+    else showChapter(chapterIndex + direction);
+  }
+  const letter = document.querySelector('.letter');
+  const interactive = target => target.closest('button, a, input, select, textarea, iframe, [contenteditable]');
+  let gesture = null;
+  letter.addEventListener('pointerdown', event => {
+    if (!event.isPrimary) { gesture = null; return; }
+    if (event.button !== 0 || interactive(event.target)) return;
+    gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, horizontal: false };
+  });
+  letter.addEventListener('pointermove', event => {
+    if (!gesture || event.pointerId !== gesture.id) return;
+    const dx = event.clientX - gesture.x;
+    const dy = event.clientY - gesture.y;
+    if (!gesture.horizontal && Math.max(Math.abs(dx), Math.abs(dy)) >= 12) {
+      if (Math.abs(dx) <= Math.abs(dy) * 1.5) { gesture = null; return; }
+      gesture.horizontal = true;
+      letter.setPointerCapture(event.pointerId);
+    }
+    if (gesture?.horizontal) event.preventDefault();
+  });
+  letter.addEventListener('pointerup', event => {
+    if (!gesture || event.pointerId !== gesture.id) return;
+    const swipe = gesture;
+    gesture = null;
+    if (letter.hasPointerCapture(event.pointerId)) letter.releasePointerCapture(event.pointerId);
+    const dx = event.clientX - swipe.x;
+    const dy = event.clientY - swipe.y;
+    if (swipe.horizontal && Math.abs(dx) >= 55 && Math.abs(dx) > Math.abs(dy) * 1.5) turnPage(dx < 0 ? 1 : -1);
+  });
+  letter.addEventListener('pointercancel', () => { gesture = null; });
+  letter.addEventListener('lostpointercapture', event => {
+    // 觸控的隱含捕捉從文字節點轉到信紙時，也會冒泡此事件；只處理信紙本身失去捕捉。
+    if (event.target === letter) gesture = null;
+  });
+  // 桌面亦可拖曳，鍵盤使用左右方向鍵；輸入與按鈕操作不受影響。
+  letter.addEventListener('dragstart', event => { if (!interactive(event.target)) event.preventDefault(); });
+  letter.addEventListener('keydown', event => {
+    if (interactive(event.target) || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      turnPage(event.key === 'ArrowRight' ? 1 : -1);
+    }
+  });
 
   // 音樂與閱讀各自運作；API 或影片失敗時仍可翻頁。
   let player = null;

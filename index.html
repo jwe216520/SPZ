@@ -11,18 +11,17 @@
   <script src="./app.js" defer></script>
 </head>
 <body>
-  <header class="masthead"><a href="./" aria-label="重新打開這封信">一封寫給妳的信 <span class="tiny-heart">♡</span></a><span>OUR LITTLE STORY</span></header>
+  <header class="masthead"><a href="./" aria-label="重新打開這封信">一封寫給佩珍的信 <span class="tiny-heart">♡</span></a><span>OUR LITTLE STORY</span></header>
   <main class="layout">
-    <section class="letter" aria-label="我們的故事">
+    <section class="letter" aria-label="我們的故事，可左右滑動或使用鍵盤方向鍵翻頁">
       <div class="paper-edge" aria-hidden="true"></div>
       <div class="letter-inner">
         <div class="chapter-top"><span id="eyebrow">FOR YOU, WITH LOVE</span><span id="page-number">序</span></div>
         <div id="scene"></div>
-        <nav id="navigation" class="navigation" aria-label="閱讀控制" hidden>
-          <button id="previous" class="text-button" type="button">← 上一頁</button>
+        <div id="navigation" class="navigation" hidden>
+          <p id="swipe-hint" class="swipe-hint">左滑下一頁 · 右滑上一頁</p>
           <span id="progress" aria-label="閱讀進度"></span>
-          <button id="next" class="primary" type="button">下一頁 →</button>
-        </nav>
+        </div>
       </div>
     </section>
     <aside class="music-card" aria-label="陪伴這封信的音樂">

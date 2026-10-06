@@ -16,7 +16,21 @@ const mockAPI = `window.YT={Player:class {
   fs.mkdirSync(output,{recursive:true});
   const browser = await chromium.launch({channel:'chrome',headless:true});
   try {
-    const page=await browser.newPage({viewport:{width:390,height:844}});
+    const page=await browser.newPage({viewport:{width:390,height:844},hasTouch:true});
+    const touch=await page.context().newCDPSession(page);
+    async function swipe(direction, distance=110, vertical=false) {
+      await page.waitForTimeout(160);
+      const rect=await page.locator('#scene').boundingBox();
+      const x=rect.x+rect.width/2;
+      const y=Math.min(rect.y+160,600);
+      await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
+      for(let step=1;step<=5;step++) {
+        await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+(vertical?0:direction*distance*step/5),y:y+(vertical?distance*step/5:0)}]});
+        await page.waitForTimeout(30);
+      }
+      await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      await page.waitForTimeout(100);
+    }
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
     if(process.env.OFFLINE_PREVIEW==='1'){
       // 在限制網路的環境中，以本地檔案回應 HTTP 請求；仍驗證瀏覽器資源解析與相對路徑。
@@ -33,14 +47,31 @@ const mockAPI = `window.YT={Player:class {
     await page.waitForTimeout(700);
     await page.screenshot({path:path.join(output,'mobile-opening.png'),fullPage:true});
     assert.equal(await page.locator('#scene img').count(),0);
+    await swipe(-1);
+    assert.equal(await page.getByRole('button',{name:'打開這封信'}).count(),1);
     await page.getByRole('button',{name:'打開這封信'}).click();
     assert.match(await page.locator('h1').textContent(),/故事/);
     assert.equal(await page.evaluate(()=>document.activeElement.tagName),'H1');
-    await page.getByRole('button',{name:'下一頁'}).click();
-    await page.getByRole('button',{name:'上一頁'}).click();
+    assert.equal(await page.getByRole('button',{name:/上一頁|下一頁/}).count(),0);
+    await swipe(-1,25);
     assert.match(await page.locator('.scene-date').textContent(),/2025/);
-    for(let i=0;i<5;i++)await page.getByRole('button',{name:'下一頁'}).click();
+    await swipe(-1,80,true);
+    assert.match(await page.locator('.scene-date').textContent(),/2025/);
+    await swipe(-1);
+    assert.match(await page.locator('.scene-date').textContent(),/2026/);
+    await swipe(1);
+    assert.match(await page.locator('.scene-date').textContent(),/2025/);
+    await swipe(1);
+    assert.equal(await page.getByRole('button',{name:'打開這封信'}).count(),1);
+    await page.getByRole('button',{name:'打開這封信'}).click();
+    await page.keyboard.press('ArrowRight');
+    assert.match(await page.locator('.scene-date').textContent(),/2026/);
+    await page.keyboard.press('ArrowLeft');
+    for(let i=0;i<5;i++)await swipe(-1);
     assert.equal(await page.getByRole('button',{name:'下一頁'}).count(),0);
+    await swipe(-1);
+    assert.equal(await page.locator('#scene img').count(),0);
+    assert.equal(await page.getByRole('button',{name:'我同意'}).count(),1);
     const expected=['真的不再考慮一下嗎 🥺','那我再認真說一次，我喜歡妳。','我會有耐心，我們慢慢來。','我會有耐心，我們慢慢來。'];
     let priorWidth=Infinity;
     for(const response of expected){
@@ -70,6 +101,13 @@ const mockAPI = `window.YT={Player:class {
       assert(await img.evaluate(node=>node.naturalWidth>0&&getComputedStyle(node).height!=='0px'));
     }
     await page.screenshot({path:path.join(output,'mobile-ending.png'),fullPage:true});
+    await page.locator('h1').scrollIntoViewIfNeeded();
+    await swipe(1);
+    assert.equal(await page.getByRole('button',{name:'我同意'}).count(),1);
+    assert.equal(await page.locator('#scene img').count(),0);
+    assert.equal(await page.locator('.response').textContent(),expected[2]);
+    await page.getByRole('button',{name:'我同意'}).click();
+    assert.equal(await page.locator('#scene img').count(),3);
     await page.getByRole('button',{name:'暫停音樂'}).click();
     await page.getByRole('button',{name:'播放音樂'}).click();
     await page.getByRole('button',{name:'靜音',exact:true}).click();
@@ -86,7 +124,7 @@ const mockAPI = `window.YT={Player:class {
     await page.reload();
     await page.waitForFunction(()=>document.querySelector('#music-status').textContent.includes('連線失敗'));
     await page.getByRole('button',{name:'打開這封信'}).click();
-    for(let i=0;i<5;i++)await page.getByRole('button',{name:'下一頁'}).click();
+    for(let i=0;i<5;i++)await swipe(-1);
     await page.getByRole('button',{name:'我同意'}).click();
     assert.equal(await page.locator('#scene img').count(),3);
     await page.unroute('https://www.youtube.com/iframe_api');
@@ -97,7 +135,7 @@ const mockAPI = `window.YT={Player:class {
     await page.getByRole('button',{name:'打開這封信'}).click();
     await page.waitForFunction(()=>document.querySelector('#music-status').textContent.includes('播放中'));
     assert.deepEqual(errors,[]);
-    console.log('PASS: navigation, keyboard, refusal steps and hit area, photo reveal, image loading, 320–1280px layout, audio controls/retry, autoplay blocked fallback, reduced motion, reset, API failure.');
+    console.log('PASS: real touch swipe forward/back, cover/ending return, short/vertical swipe ignored, question cannot bypass agreement, keyboard arrows, refusal steps and hit area, photo reveal, image loading, 320–1280px layout, audio controls/retry, autoplay blocked fallback, reduced motion, reset, API failure.');
     if(process.env.OFFLINE_PREVIEW==='1'){console.log('Offline file-backed HTTP responses: real server connectivity and live YouTube playback remain unverified.');return;}
     // 真實 YouTube 連線另行觀察，不把外部連線限制當成互動測試失敗。
     await page.unroute('https://www.youtube.com/iframe_api');
