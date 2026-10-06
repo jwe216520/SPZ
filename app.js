@@ -67,6 +67,7 @@
       const buttons = element('div', 'answer-buttons');
       const yes = element('button', 'primary', '我同意 ♡');
       yes.type = 'button';
+      yes.classList.toggle('yes-pulse', noCount > 0);
       yes.addEventListener('click', showEnding);
       const no = element('button', 'no-button', '不同意');
       no.type = 'button';
@@ -77,6 +78,7 @@
       no.addEventListener('click', () => {
         noCount = Math.min(noCount + 1, content.noResponses.length);
         no.dataset.step = String(noCount);
+        yes.classList.add('yes-pulse');
         response.textContent = content.noResponses[noCount - 1];
         response.hidden = false;
       });
@@ -96,9 +98,9 @@
   function showEnding() {
     stopPhotoReveal();
     showingEnding = true;
-    $('navigation').hidden = false;
-    $('swipe-hint').textContent = '點左側或右滑回上一頁 · 點字卡看照片';
-    $('swipe-hint').hidden = false;
+    $('navigation').hidden = true;
+    $('swipe-hint').textContent = '';
+    $('swipe-hint').hidden = true;
     $('progress').hidden = true;
     $('eyebrow').textContent = 'TO BE CONTINUED, TOGETHER';
     $('page-number').textContent = '♡';

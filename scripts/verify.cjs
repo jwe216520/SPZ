@@ -30,6 +30,13 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
       const rect=await page.locator('.letter').boundingBox();
       await page.mouse.click(rect.x+rect.width*(direction>0?.8:.2),Math.max(100,rect.y+110));
     }
+    async function clickYes() {
+      const button=page.getByRole('button',{name:'我同意'});
+      // 持續縮放不會達到 Playwright 的 stable 條件；以真實滑鼠點中心驗證命中。
+      await button.evaluate(node=>node.scrollIntoView({block:'center',behavior:'instant'}));
+      const rect=await button.boundingBox();
+      await page.mouse.click(rect.x+rect.width/2,rect.y+rect.height/2);
+    }
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
     if(process.env.OFFLINE_PREVIEW==='1'){
       // 在限制網路的環境中，以本地檔案回應 HTTP 請求；仍驗證瀏覽器資源解析與相對路徑。
@@ -158,15 +165,43 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
     const responses=await page.evaluate(()=>window.LETTER_CONTENT.noResponses);
     assert.equal(responses.length,6);
     const expected=[...responses,responses.at(-1)];
-    let priorWidth=(await page.locator('.no-button').boundingBox()).width;
-    let priorHeight=(await page.locator('.no-button').boundingBox()).height;
+    const initialNo=await page.locator('.no-button').boundingBox();
+    const initialYes=await page.locator('.answer-buttons .primary').boundingBox();
+    assert.equal(initialNo.width,96);assert.equal(initialNo.height,42);
+    assert(initialNo.width<initialYes.width&&initialNo.height<initialYes.height);
+    const yesButton=page.locator('.answer-buttons .primary');
+    assert.equal(await yesButton.evaluate(node=>getComputedStyle(node).animationName),'none');
+    let pulseStarted;
+    const sizes=[[88,39],[80,36],[72,33],[64,30],[56,27],[48,24],[48,24]];
+    let priorWidth=initialNo.width;
+    let priorHeight=initialNo.height;
     for(const [index,response] of expected.entries()){
       await page.getByRole('button',{name:'不同意',exact:true}).click();
       assert.equal(await page.locator('.response').textContent(),response);
+      const pulse=await yesButton.evaluate(node=>{
+        const animation=node.getAnimations().find(item=>item.animationName==='yesPulse');
+        const style=getComputedStyle(node);
+        return {start:animation?.startTime,name:style.animationName,duration:style.animationDuration,iterations:style.animationIterationCount};
+      });
+      assert.equal(pulse.name,'yesPulse');assert.equal(pulse.duration,'1.2s');assert.equal(pulse.iterations,'infinite');
+      if(index===0) {
+        // 固定動畫時間，驗證縮放端點且排版尺寸不變。
+        await yesButton.evaluate(node=>{const animation=node.getAnimations().find(item=>item.animationName==='yesPulse');animation.pause();animation.currentTime=600;});
+        const enlarged=await yesButton.boundingBox();
+        assert(Math.abs(enlarged.width/initialYes.width-1.08)<0.01);
+        assert.equal(await yesButton.evaluate(node=>node.offsetHeight),Math.round(initialYes.height));
+        await yesButton.evaluate(node=>{const animation=node.getAnimations().find(item=>item.animationName==='yesPulse');animation.currentTime=1200;});
+        assert(Math.abs((await yesButton.boundingBox()).width-initialYes.width)<0.1);
+        await yesButton.evaluate(node=>node.getAnimations().find(item=>item.animationName==='yesPulse').play());
+        await page.waitForTimeout(30);
+        pulseStarted=await yesButton.evaluate(node=>node.getAnimations().find(item=>item.animationName==='yesPulse').startTime);
+      } else assert.equal(pulse.start,pulseStarted,'repeat no clicks must not restart the pulse');
       await page.waitForTimeout(230);
       const bounds=await page.locator('.no-button').boundingBox();
-      assert(bounds.width>=44&&bounds.height>=44);
-      if(index<6)assert(bounds.width<priorWidth,`no button must shrink at step ${index+1}`);
+      assert.equal(bounds.width,sizes[index][0]);
+      assert.equal(bounds.height,sizes[index][1]);
+      assert(await page.locator('.no-button').evaluate(node=>node.scrollWidth<=node.clientWidth&&node.scrollHeight<=node.clientHeight));
+      if(index<6)assert(bounds.width<priorWidth&&bounds.height<priorHeight,`no button must shrink at step ${index+1}`);
       else {
         assert.equal(bounds.width,priorWidth);
         assert.equal(bounds.height,priorHeight);
@@ -179,20 +214,36 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
     assert.equal(await page.locator('#swipe-hint').isVisible(),false);
     await page.keyboard.press('ArrowRight');
     assert.equal(await page.locator('.no-button').getAttribute('data-step'),'6');
+    assert.equal(await yesButton.evaluate(node=>getComputedStyle(node).animationName),'yesPulse');
+    await page.emulateMedia({reducedMotion:'reduce'});
+    assert.equal(await yesButton.evaluate(node=>getComputedStyle(node).animationName),'none');
+    assert.equal(await yesButton.evaluate(node=>getComputedStyle(node).transform),'none');
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    assert.equal(await page.locator('.response').textContent(),responses.at(-1));
+    await page.getByRole('button',{name:'不同意',exact:true}).focus();
+    await page.keyboard.press('Enter');await page.keyboard.press('Space');
+    assert.equal(await page.locator('.no-button').getAttribute('data-step'),'6');
     assert.equal(await page.locator('.response').textContent(),responses.at(-1));
     await page.waitForTimeout(650);
     await page.screenshot({path:path.join(output,'mobile-question.png'),fullPage:true});
     for(const width of [320,390,768,1280]){
       await page.setViewportSize({width,height:900});
       assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow at ${width}`);
+      const noBounds=await page.locator('.no-button').boundingBox();
+      assert.equal(noBounds.width,48);assert.equal(noBounds.height,24);
+      assert(await page.locator('.no-button').evaluate(node=>node.scrollWidth<=node.clientWidth&&node.scrollHeight<=node.clientHeight));
+      const yesBounds=await yesButton.boundingBox();
+      assert(yesBounds.x+yesBounds.width<noBounds.x,'pulse must not overlap the no button');
     }
     await page.screenshot({path:path.join(output,'desktop-question.png'),fullPage:true});
     await page.setViewportSize({width:390,height:844});
     await page.getByRole('button',{name:'我同意'}).focus();
     await page.keyboard.press('Enter');
     assert.equal(await page.locator('#scene img').count(),3);
-    assert.equal(await page.locator('#swipe-hint').isVisible(),true);
-    assert.equal(await page.locator('#swipe-hint').textContent(),'點左側或右滑回上一頁 · 點字卡看照片');
+    assert.equal(await page.locator('.yes-pulse').count(),0);
+    assert.equal(await page.locator('#swipe-hint').isVisible(),false);
+    assert.equal(await page.locator('#swipe-hint').textContent(),'');
+    assert.equal(await page.locator('#navigation').isVisible(),false);
     const sources=await page.locator('#scene img').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('src')));
     assert.deepEqual(sources,await page.evaluate(()=>window.LETTER_CONTENT.photos.map(photo=>photo.src)));
     assert.equal(await page.locator('.photo-card[aria-pressed="false"]').count(),3);
@@ -201,7 +252,7 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
       await page.locator('h1').focus();
       await page.keyboard.press('ArrowLeft');
       assert.equal(await page.locator('.photo-card').count(),0);
-      await page.getByRole('button',{name:'我同意'}).click();
+      await clickYes();
       await page.waitForTimeout(800);
       assert.equal(await page.locator('.photo-card[aria-pressed="false"]').count(),3);
     }
@@ -286,7 +337,7 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
     assert.equal(await page.getByRole('button',{name:'我同意'}).count(),1);
     assert.equal(await page.locator('#scene img').count(),0);
     assert.equal(await page.locator('.response').textContent(),responses.at(-1));
-    await page.getByRole('button',{name:'我同意'}).click();
+    await clickYes();
     assert.equal(await page.locator('#scene img').count(),3);
     assert.equal(await page.locator('.photo-card[aria-pressed="false"]').count(),3);
     const toggle=page.locator('#sound-toggle');
@@ -311,13 +362,17 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
     await page.reload();
     await page.getByRole('button',{name:'打開這封信'}).click();
     for(let i=0;i<5;i++)await swipe(-1);
-    await page.getByRole('button',{name:'我同意'}).click();
+    await clickYes();
     await cards.first().click();
     await page.locator('.photo-error').waitFor({state:'visible'});
     await cards.first().click();
     assert.equal(await cards.first().getAttribute('aria-pressed'),'false');
     await page.unroute('**/assets/seaside.jpg');
     await page.reload();assert.equal(await page.locator('#scene img').count(),0);
+    await page.getByRole('button',{name:'打開這封信'}).click();
+    for(let i=0;i<5;i++)await swipe(-1);
+    assert.equal(await yesButton.evaluate(node=>getComputedStyle(node).animationName),'none');
+    assert.equal(await page.locator('.no-button').getAttribute('data-step'),'0');
     // 真實 MP3 載入失敗及恢復，閱讀仍可完成。
     await page.route('**/assets/music.mp3',route=>route.fulfill({status:404,body:'Not found'}));
     await page.reload();
@@ -325,7 +380,7 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
     assert.equal(await page.locator('#sound-toggle').getAttribute('aria-label'),'重試播放音樂');
     await page.getByRole('button',{name:'打開這封信'}).click();
     for(let i=0;i<5;i++)await swipe(-1);
-    await page.getByRole('button',{name:'我同意'}).click();
+    await clickYes();
     assert.equal(await page.locator('#scene img').count(),3);
     await page.unroute('**/assets/music.mp3');
     await page.locator('#sound-toggle').click();
