@@ -12,6 +12,18 @@
 </head>
 <body>
   <header class="masthead"><a href="./" aria-label="重新打開這封信">一封寫給佩珍的信 <span class="tiny-heart">♡</span></a><span>OUR LITTLE STORY</span></header>
+  <div class="sound-control">
+    <button id="sound-toggle" class="sound-toggle" type="button" aria-label="開啟聲音" aria-pressed="false" title="開啟聲音">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M11 5 6 9H3v6h3l5 4z"/>
+        <g id="sound-waves" hidden><path d="M15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14"/></g>
+        <g id="sound-off"><path d="m16 9 5 6m0-6-5 6"/></g>
+      </svg>
+    </button>
+    <p id="sound-notice" class="sound-notice" hidden></p>
+  </div>
+  <p id="sound-status" class="sr-only" role="status" aria-live="polite"></p>
+  <audio id="background-music" preload="auto" aria-hidden="true"></audio>
   <main class="layout">
     <section class="letter" aria-label="我們的故事，可左右滑動或使用鍵盤方向鍵翻頁">
       <div class="paper-edge" aria-hidden="true"></div>
@@ -24,17 +36,6 @@
         </div>
       </div>
     </section>
-    <aside class="music-card" aria-label="陪伴這封信的音樂">
-      <div class="music-heading"><span class="music-icon" aria-hidden="true">♫</span><div><p class="label">A SONG FOR THIS MOMENT</p><h2>讓音樂，陪我們慢慢看</h2></div></div>
-      <p class="music-note">有些心意，想配著這首歌說給妳聽。</p>
-      <div class="player-frame"><div id="youtube-player"></div></div>
-      <p id="music-status" class="music-status" role="status">正在準備音樂，妳也可以先讀這封信。</p>
-      <div class="music-controls"><button id="play" class="secondary" type="button">播放音樂</button><button id="mute" class="text-button" type="button" aria-pressed="false">靜音</button></div>
-      <label class="volume-label" for="volume">音量 <output id="volume-value" for="volume">30%</output></label>
-      <input id="volume" type="range" min="0" max="100" value="30">
-      <p class="device-note">手機若無法調整音量，請使用手機音量鍵。</p>
-      <div class="music-links"><button id="retry" class="text-button" type="button">重新載入</button><a id="youtube-link" target="_blank" rel="noopener noreferrer">在 YouTube 開啟 ↗</a></div>
-    </aside>
   </main>
   <footer class="footer">從那次相遇開始，故事慢慢有了我們。 <span aria-hidden="true">♡</span></footer>
   <noscript><p class="noscript">這封信需要 JavaScript 才能翻頁，請在瀏覽器中開啟 JavaScript。</p></noscript>
