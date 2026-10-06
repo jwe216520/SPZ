@@ -7,7 +7,8 @@ const base = process.env.PREVIEW_URL || 'http://127.0.0.1:5500/';
 const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview');
 (async () => {
   fs.mkdirSync(output,{recursive:true});
-  const browser = await chromium.launch({channel:'chrome',headless:true});
+  const autoplayOnly=process.env.AUTOPLAY_ONLY==='1';
+  const browser = await chromium.launch({channel:'chrome',headless:true,args:autoplayOnly?['--autoplay-policy=no-user-gesture-required']:[]});
   try {
     const page=await browser.newPage({viewport:{width:390,height:844},hasTouch:true});
     const touch=await page.context().newCDPSession(page);
@@ -44,6 +45,14 @@ const output = process.env.PREVIEW_OUTPUT || path.join(process.cwd(), '.preview'
     }
     
     await page.goto(base);
+    if(autoplayOnly){
+      await page.waitForFunction(()=>{const a=document.querySelector('audio');return !a.paused&&!a.muted&&a.currentTime>0;});
+      assert(await page.locator('audio').evaluate(a=>a.autoplay&&!a.defaultMuted&&a.volume===1));
+      assert.equal(await page.locator('#sound-toggle').getAttribute('aria-label'),'靜音');
+      assert.equal(await page.getByRole('button',{name:'打開這封信'}).count(),1);
+      console.log('PASS: actual MP3 starts with sound on page load, before any user interaction, when browser autoplay policy permits.');
+      return;
+    }
     await page.waitForTimeout(700);
     await page.screenshot({path:path.join(output,'mobile-opening.png'),fullPage:true});
     assert.equal(await page.locator('#scene img').count(),0);

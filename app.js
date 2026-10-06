@@ -182,10 +182,12 @@
   let attempt = 0;
   let noticeTimer;
   let loadingTimer;
+  audio.defaultMuted = false;
+  audio.muted = false;
   audio.src = content.music.src;
 
   function syncSoundButton() {
-    const sounding = !audio.paused && !audio.ended && !audio.muted && !failed;
+    const sounding = (!audio.paused || playPending) && !audio.ended && !audio.muted && !failed;
     const label = failed ? '重試播放音樂' : audio.ended ? '重新播放音樂' : sounding ? '靜音' : '開啟聲音';
     soundButton.setAttribute('aria-label', label);
     soundButton.setAttribute('aria-pressed', String(sounding));
@@ -209,6 +211,7 @@
     if (restart && audio.ended) audio.currentTime = 0;
     audio.muted = userMuted;
     playPending = true;
+    syncSoundButton();
     loadingTimer = setTimeout(() => {
       if (token === attempt && playPending) notifySound('音樂還在載入，妳可以先讀這封信。');
     }, 10000);

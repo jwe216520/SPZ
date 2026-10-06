@@ -13,17 +13,17 @@
 <body>
   <header class="masthead"><a href="./" aria-label="重新打開這封信">一封寫給佩珍的信 <span class="tiny-heart">♡</span></a><span>OUR LITTLE STORY</span></header>
   <div class="sound-control">
-    <button id="sound-toggle" class="sound-toggle" type="button" aria-label="開啟聲音" aria-pressed="false" title="開啟聲音">
+    <button id="sound-toggle" class="sound-toggle" type="button" aria-label="靜音" aria-pressed="true" title="靜音">
       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M11 5 6 9H3v6h3l5 4z"/>
-        <g id="sound-waves" hidden><path d="M15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14"/></g>
-        <g id="sound-off"><path d="m16 9 5 6m0-6-5 6"/></g>
+        <g id="sound-waves"><path d="M15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14"/></g>
+        <g id="sound-off" hidden><path d="m16 9 5 6m0-6-5 6"/></g>
       </svg>
     </button>
     <p id="sound-notice" class="sound-notice" hidden></p>
   </div>
   <p id="sound-status" class="sr-only" role="status" aria-live="polite"></p>
-  <audio id="background-music" preload="auto" aria-hidden="true"></audio>
+  <audio id="background-music" autoplay preload="auto" aria-hidden="true"></audio>
   <main class="layout">
     <section class="letter" aria-label="我們的故事，可左右滑動或使用鍵盤方向鍵翻頁">
       <div class="paper-edge" aria-hidden="true"></div>
